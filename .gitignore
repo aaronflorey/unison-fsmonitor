@@ -1,4 +1,5 @@
 /target
 /dist
+/.zig-cache
 **/*.rs.bk
 result
