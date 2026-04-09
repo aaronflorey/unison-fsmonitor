@@ -1,6 +1,6 @@
 # unison-fsmonitor
 
-[![Github Actions Status](https://github.com/autozimu/unison-fsmonitor/workflows/build-and-test/badge.svg)](https://github.com/autozimu/unison-fsmonitor/actions?query=workflow%3Abuild-and-test)
+[![CI](https://github.com/autozimu/unison-fsmonitor/actions/workflows/ci.yml/badge.svg)](https://github.com/autozimu/unison-fsmonitor/actions/workflows/ci.yml)
 
 ## Why
 
@@ -31,6 +31,10 @@ You might need to update file watch limits in both hosts if watching limit reach
 ```
 RUST_LOG=debug unison
 ```
+
+## Releases
+
+Releases are managed with `release-please` and built with GoReleaser. Use conventional commits such as `feat:`, `fix:`, and `feat!:` so changelog entries and version bumps are generated correctly.
 
 ## References
 
