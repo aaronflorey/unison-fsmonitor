@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: unison-fsmonitor
+
+before:
+  hooks:
+    - cargo test --locked
+
+builds:
+  - id: unison-fsmonitor
+    builder: rust
+    binary: unison-fsmonitor
+    command: zigbuild
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+    flags:
+      - --release
+      - --locked
+
+archives:
+  - id: archives
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE*
+      - README*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
