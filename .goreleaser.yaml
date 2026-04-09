@@ -8,13 +8,21 @@ before:
     - cargo test --locked
 
 builds:
-  - id: unison-fsmonitor
+  - id: unison-fsmonitor-linux
     builder: rust
     binary: unison-fsmonitor
     command: zigbuild
     targets:
       - x86_64-unknown-linux-gnu
       - aarch64-unknown-linux-gnu
+    flags:
+      - --release
+      - --locked
+  - id: unison-fsmonitor-darwin
+    builder: rust
+    binary: unison-fsmonitor
+    command: build
+    targets:
       - x86_64-apple-darwin
       - aarch64-apple-darwin
     flags:
