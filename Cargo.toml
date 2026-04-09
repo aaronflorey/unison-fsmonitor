@@ -2,7 +2,7 @@
 name = "unison-fsmonitor"
 description = "unison-fsmonitor implementation"
 repository = "https://github.com/aaronflorey/unison-fsmonitor"
-version = "1.0.0"
+version = "2.0.1"
 authors = ["Aaron Florey"]
 license = "MIT"
 edition = "2024"
