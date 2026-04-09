@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/aaronflorey/unison-fsmonitor/compare/v1.0.0...v2.0.1) (2026-04-09)
+
+
+### Miscellaneous Chores
+
+* bump ([5627640](https://github.com/aaronflorey/unison-fsmonitor/commit/5627640c0a13f704b37be62bcd2e02a5ae9b7dd3))
+
 ## [1.0.0](https://github.com/aaronflorey/unison-fsmonitor/compare/v1.0.0...v1.0.0) (2026-04-09)
 
 
