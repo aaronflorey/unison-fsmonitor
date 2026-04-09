@@ -1,9 +1,9 @@
 [package]
 name = "unison-fsmonitor"
 description = "unison-fsmonitor implementation"
-repository = "https://github.com/autozimu/unison-fsmonitor"
+repository = "https://github.com/aaronflorey/unison-fsmonitor"
 version = "0.3.8"
-authors = ["Junfeng Li <autozimu@gmail.com>"]
+authors = ["Aaron Florey"]
 license = "MIT"
 edition = "2024"
 

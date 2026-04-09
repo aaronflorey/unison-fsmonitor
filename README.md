@@ -1,6 +1,6 @@
 # unison-fsmonitor
 
-[![CI](https://github.com/autozimu/unison-fsmonitor/actions/workflows/ci.yml/badge.svg)](https://github.com/autozimu/unison-fsmonitor/actions/workflows/ci.yml)
+[![CI](https://github.com/aaronflorey/unison-fsmonitor/actions/workflows/ci.yml/badge.svg)](https://github.com/aaronflorey/unison-fsmonitor/actions/workflows/ci.yml)
 
 ## Why
 
@@ -8,12 +8,16 @@
 
 The project started on macOS, but release binaries are now published for macOS and Linux.
 
+## Attribution
+
+This repository continues the original `autozimu/unison-fsmonitor` work by Junfeng Li.
+
 ## Install
 
 Recommended: install the published release with [`bin`](https://github.com/aaronflorey/bin).
 
 ```sh
-bin install github.com/autozimu/unison-fsmonitor
+bin install github.com/aaronflorey/unison-fsmonitor
 ```
 
 If you already use [cargo](https://github.com/rust-lang/cargo), you can also install from source:
