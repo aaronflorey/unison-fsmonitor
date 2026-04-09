@@ -4,15 +4,19 @@
 
 ## Why
 
-`unison` doesn't include `unison-fsmonitor` for macOS, thus `-repeat watch` option doesn't work out of the box. This utility fills the gap. This implementation was originally made for macOS but shall work on other platforms as well like Linux, Windows.
+`unison` does not ship `unison-fsmonitor` for macOS, so `-repeat watch` does not work out of the box. This utility fills that gap.
+
+The project started on macOS, but release binaries are now published for macOS and Linux.
 
 ## Install
 
+Recommended: install the published release with [`bin`](https://github.com/aaronflorey/bin).
+
 ```sh
-brew install autozimu/homebrew-formulas/unison-fsmonitor
+bin install github.com/autozimu/unison-fsmonitor
 ```
 
-Alternatively if you have [cargo](https://github.com/rust-lang/cargo) installed,
+If you already use [cargo](https://github.com/rust-lang/cargo), you can also install from source:
 
 ```sh
 cargo install unison-fsmonitor
@@ -20,21 +24,23 @@ cargo install unison-fsmonitor
 
 ## Usage
 
-Simply run unison with `-repeat watch` as argument or `repeat=watch` in config file.
+Run `unison` with `-repeat watch`, or set `repeat = watch` in your config file.
 
-## File watch limits 
+## File Watch Limits
 
-You might need to update file watch limits in both hosts if watching limit reached. See <https://facebook.github.io/watchman/docs/install#system-specific-preparation> for more details.
+If you hit the watch limit, increase the file watch limits on both hosts. See <https://facebook.github.io/watchman/docs/install#system-specific-preparation> for platform-specific guidance.
 
 ## Debug
 
-```
+```sh
 RUST_LOG=debug unison
 ```
 
 ## Releases
 
-Releases are managed with `release-please` and built with GoReleaser. Use conventional commits such as `feat:`, `fix:`, and `feat!:` so changelog entries and version bumps are generated correctly.
+Releases are managed with `release-please` and published with GoReleaser.
+
+Use conventional commits such as `feat:`, `fix:`, and `feat!:` so changelog entries and version bumps are generated correctly.
 
 ## References
 
