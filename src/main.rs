@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::error;
 use notify::{Config, RecommendedWatcher, Watcher};
-use std::io::{stdin, stdout, BufRead};
+use std::io::{BufRead, stdin, stdout};
 use std::sync::mpsc::channel;
 use std::thread;
 use unison_fsmonitor::{Monitor, MonitorEvent};
