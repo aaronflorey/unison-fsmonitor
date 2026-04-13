@@ -42,3 +42,14 @@ checksum:
 
 changelog:
   use: github-native
+
+brews:
+  - name: unison-fsmonitor
+    repository:
+      owner: aaronflorey
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/aaronflorey/unison-fsmonitor"
+    description: "Filesystem monitor helper for Unison"
