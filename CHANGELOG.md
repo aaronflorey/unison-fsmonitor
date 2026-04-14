@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/aaronflorey/unison-fsmonitor/compare/v2.0.1...v2.0.2) (2026-04-14)
+
+
+### Bug Fixes
+
+* **monitor:** Add structured context to watcher errors ([19b4eb4](https://github.com/aaronflorey/unison-fsmonitor/commit/19b4eb4d3a42dae95e06c16dde823a248063fcbb))
+
 ## [2.0.1](https://github.com/aaronflorey/unison-fsmonitor/compare/v1.0.0...v2.0.1) (2026-04-09)
 
 
