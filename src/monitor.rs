@@ -77,19 +77,21 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
     }
 
     pub fn handle_event(&mut self, event: MonitorEvent) -> Result<()> {
+        self.handle_event_ref(&event)
+    }
+
+    pub fn handle_event_ref(&mut self, event: &MonitorEvent) -> Result<()> {
         debug!("event: {:?}", event);
 
         match event {
             MonitorEvent::Input(input) => {
                 let input_line = input.trim_end();
-                self.handle_input(&input)
+                self.handle_input(input)
                     .with_context(|| format!("op=handle_input command={:?}", input_line))
             }
-            MonitorEvent::FsEvent(event) => {
-                let event_details = format!("{:?}", event);
-                self.handle_fs_event(event)
-                    .with_context(|| format!("op=handle_fs_event event={:?}", event_details))
-            }
+            MonitorEvent::FsEvent(event) => self
+                .handle_fs_event(event)
+                .with_context(|| format!("op=handle_fs_event event={:?}", event)),
         }
     }
 
@@ -116,16 +118,15 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         }
     }
 
-    fn handle_fs_event(&mut self, event: NotifyEvent) -> Result<()> {
+    fn handle_fs_event(&mut self, event: &NotifyEvent) -> Result<()> {
         let mut matched_replica_ids = HashSet::new();
 
-        for path in self.paths_for_event(&event) {
-            for (id, replica) in &mut self.replicas {
-                if let Ok(relative_path) = path.strip_prefix(&replica.root) {
-                    matched_replica_ids.insert(id.clone());
-                    replica.pending_changes.insert(relative_path.into());
-                }
-            }
+        for path in &event.paths {
+            self.mark_path_changed(path, &mut matched_replica_ids);
+        }
+
+        for path in self.linked_paths_for_event(event) {
+            self.mark_path_changed(&path, &mut matched_replica_ids);
         }
 
         if matched_replica_ids.is_empty() {
@@ -277,20 +278,33 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
             .any(|replica| replica.is_watching(path))
     }
 
-    fn paths_for_event(&self, event: &NotifyEvent) -> Vec<PathBuf> {
-        let mut paths = event.paths.clone();
+    fn mark_path_changed(&mut self, path: &Path, matched_replica_ids: &mut HashSet<ReplicaId>) {
+        for (id, replica) in &mut self.replicas {
+            if let Ok(relative_path) = path.strip_prefix(&replica.root) {
+                matched_replica_ids.insert(id.clone());
+                replica.pending_changes.insert(relative_path.into());
+            }
+        }
+    }
+
+    fn linked_paths_for_event(&self, event: &NotifyEvent) -> Vec<PathBuf> {
+        if self.link_map.is_empty() {
+            return Vec::new();
+        }
+
+        let mut linked_paths = Vec::new();
 
         for path in &event.paths {
             for (realpath, links) in &self.link_map {
                 if let Ok(postfix) = path.strip_prefix(realpath) {
                     for link in links {
-                        paths.push(link.join(postfix));
+                        linked_paths.push(link.join(postfix));
                     }
                 }
             }
         }
 
-        paths
+        linked_paths
     }
 
     fn send_cmd(&mut self, command: &str, args: &[&str]) {
@@ -373,7 +387,7 @@ mod tests {
         let mut monitor = new_monitor();
 
         monitor
-            .handle_event(MonitorEvent::Input("VERSION 1\n".into()))
+            .handle_event_ref(&MonitorEvent::Input("VERSION 1\n".into()))
             .unwrap();
 
         assert_eq!(written_lines(&mut monitor), vec!["VERSION 1".to_owned()]);
@@ -386,7 +400,7 @@ mod tests {
         let root = PathBuf::from("/tmp/sample");
 
         monitor
-            .handle_event(MonitorEvent::Input(format!(
+            .handle_event_ref(&MonitorEvent::Input(format!(
                 "START {} {}\n",
                 id,
                 root.to_string_lossy()
@@ -408,7 +422,7 @@ mod tests {
         let subdir = PathBuf::from("subdir");
 
         monitor
-            .handle_event(MonitorEvent::Input(format!(
+            .handle_event_ref(&MonitorEvent::Input(format!(
                 "START {} {} {}\n",
                 id,
                 root.to_string_lossy(),
@@ -435,7 +449,7 @@ mod tests {
         let mut monitor = new_monitor();
 
         monitor
-            .handle_event(MonitorEvent::Input("DIR\n".into()))
+            .handle_event_ref(&MonitorEvent::Input("DIR\n".into()))
             .unwrap();
 
         assert_eq!(written_lines(&mut monitor), vec!["OK".to_owned()]);
@@ -446,7 +460,7 @@ mod tests {
         let mut monitor = new_monitor();
 
         monitor
-            .handle_event(MonitorEvent::Input("DIR dir\n".into()))
+            .handle_event_ref(&MonitorEvent::Input("DIR dir\n".into()))
             .unwrap();
 
         assert_eq!(written_lines(&mut monitor), vec!["OK".to_owned()]);
@@ -460,7 +474,7 @@ mod tests {
         let file = PathBuf::from("env");
 
         monitor
-            .handle_event(MonitorEvent::Input(format!(
+            .handle_event_ref(&MonitorEvent::Input(format!(
                 "START {} {} {}\n",
                 id,
                 root.to_string_lossy(),
@@ -468,7 +482,7 @@ mod tests {
             )))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input("LINK\n".into()))
+            .handle_event_ref(&MonitorEvent::Input("LINK\n".into()))
             .unwrap();
 
         assert_eq!(
@@ -485,18 +499,18 @@ mod tests {
         let filename = "filename";
 
         monitor
-            .handle_event(MonitorEvent::Input(format!("START {} {}\n", id, root)))
+            .handle_event_ref(&MonitorEvent::Input(format!("START {} {}\n", id, root)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::FsEvent(create_event(
+            .handle_event_ref(&MonitorEvent::FsEvent(create_event(
                 PathBuf::from(root).join(filename),
             )))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("WAIT {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("WAIT {}\n", id)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("CHANGES {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("CHANGES {}\n", id)))
             .unwrap();
 
         assert_eq!(
@@ -518,18 +532,18 @@ mod tests {
         let filename = "filename";
 
         monitor
-            .handle_event(MonitorEvent::Input(format!("START {} {}\n", id, root)))
+            .handle_event_ref(&MonitorEvent::Input(format!("START {} {}\n", id, root)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("WAIT {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("WAIT {}\n", id)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::FsEvent(create_event(
+            .handle_event_ref(&MonitorEvent::FsEvent(create_event(
                 PathBuf::from(root).join(filename),
             )))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("CHANGES {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("CHANGES {}\n", id)))
             .unwrap();
 
         assert_eq!(
@@ -552,21 +566,21 @@ mod tests {
         let filename = "filename";
 
         monitor
-            .handle_event(MonitorEvent::Input(format!(
+            .handle_event_ref(&MonitorEvent::Input(format!(
                 "START {} {} {}\n",
                 id, root, subdir
             )))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::FsEvent(create_event(
+            .handle_event_ref(&MonitorEvent::FsEvent(create_event(
                 PathBuf::from(root).join(subdir).join(filename),
             )))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("WAIT {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("WAIT {}\n", id)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::Input(format!("CHANGES {}\n", id)))
+            .handle_event_ref(&MonitorEvent::Input(format!("CHANGES {}\n", id)))
             .unwrap();
 
         assert_eq!(
@@ -588,10 +602,10 @@ mod tests {
         let filename = "filename";
 
         monitor
-            .handle_event(MonitorEvent::Input(format!("START {} {}\n", id, root)))
+            .handle_event_ref(&MonitorEvent::Input(format!("START {} {}\n", id, root)))
             .unwrap();
         monitor
-            .handle_event(MonitorEvent::FsEvent(create_event(
+            .handle_event_ref(&MonitorEvent::FsEvent(create_event(
                 PathBuf::from(root).join(filename),
             )))
             .unwrap();
@@ -604,7 +618,7 @@ mod tests {
         let mut monitor = Monitor::new(FailingWatchWatcher, Cursor::new(vec![]));
 
         let error = monitor
-            .handle_event(MonitorEvent::Input("START 123 /tmp/sample\n".into()))
+            .handle_event_ref(&MonitorEvent::Input("START 123 /tmp/sample\n".into()))
             .unwrap_err();
 
         let message = format!("{:#}", error);

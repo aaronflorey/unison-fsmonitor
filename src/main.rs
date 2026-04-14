@@ -54,15 +54,14 @@ fn main() -> Result<()> {
     });
 
     for event in event_rx {
-        let event_kind = match &event {
-            MonitorEvent::Input(_) => "input",
-            MonitorEvent::FsEvent(_) => "fs_event",
-        };
-        let event_description = format!("{:?}", event);
-        if let Err(error) = monitor.handle_event(event) {
+        if let Err(error) = monitor.handle_event_ref(&event) {
+            let event_kind = match &event {
+                MonitorEvent::Input(_) => "input",
+                MonitorEvent::FsEvent(_) => "fs_event",
+            };
             error!(
                 "component=monitor event=handle_event_failure event_kind={} event_payload={:?} error={} error_chain={:#}",
-                event_kind, event_description, error, error
+                event_kind, event, error, error
             );
         }
     }
