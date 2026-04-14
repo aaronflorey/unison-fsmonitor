@@ -80,8 +80,16 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         debug!("event: {:?}", event);
 
         match event {
-            MonitorEvent::Input(input) => self.handle_input(&input),
-            MonitorEvent::FsEvent(event) => self.handle_fs_event(event),
+            MonitorEvent::Input(input) => {
+                let input_line = input.trim_end();
+                self.handle_input(&input)
+                    .with_context(|| format!("op=handle_input command={:?}", input_line))
+            }
+            MonitorEvent::FsEvent(event) => {
+                let event_details = format!("{:?}", event);
+                self.handle_fs_event(event)
+                    .with_context(|| format!("op=handle_fs_event event={:?}", event_details))
+            }
         }
     }
 
@@ -171,7 +179,13 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
             .is_none_or(|replica| !replica.is_watching(&current_path));
         if should_watch {
             self.watcher
-                .watch(&current_path, RecursiveMode::Recursive)?;
+                .watch(&current_path, RecursiveMode::Recursive)
+                .with_context(|| {
+                    format!(
+                        "op=watch command=START replica_id={} path={:?}",
+                        replica_id, current_path
+                    )
+                })?;
         }
 
         let replica = self
@@ -192,9 +206,16 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         };
         let realpath = path
             .canonicalize()
-            .with_context(|| format!("Unable to canonicalize path={:?}", path))?;
+            .with_context(|| format!("op=canonicalize command=LINK path={:?}", path))?;
 
-        self.watcher.watch(&realpath, RecursiveMode::Recursive)?;
+        self.watcher
+            .watch(&realpath, RecursiveMode::Recursive)
+            .with_context(|| {
+                format!(
+                    "op=watch command=LINK path={:?} realpath={:?}",
+                    path, realpath
+                )
+            })?;
         self.link_map.entry(realpath).or_default().insert(path);
         debug!("link_map: {:?}", self.link_map);
         self.send_ack();
@@ -236,7 +257,12 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         if let Some(replica) = self.replicas.remove(replica_id) {
             for path in replica.paths {
                 if !self.is_watching(&path) {
-                    self.watcher.unwatch(&path)?;
+                    self.watcher.unwatch(&path).with_context(|| {
+                        format!(
+                            "op=unwatch command=RESET replica_id={} path={:?}",
+                            replica_id, path
+                        )
+                    })?;
                 }
             }
         }
@@ -303,17 +329,26 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
 #[cfg(test)]
 mod tests {
     use super::{Monitor, MonitorEvent, Watch};
+    use anyhow::bail;
     use notify::{
-        Event as NotifyEvent,
+        Event as NotifyEvent, RecursiveMode,
         event::{CreateKind, EventKind},
     };
     use std::io::Cursor;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[derive(Default)]
     struct TestWatcher;
 
     impl Watch for TestWatcher {}
+
+    struct FailingWatchWatcher;
+
+    impl Watch for FailingWatchWatcher {
+        fn watch(&mut self, _path: &Path, _recursive_mode: RecursiveMode) -> anyhow::Result<()> {
+            bail!("No path was found.");
+        }
+    }
 
     type TestMonitor = Monitor<TestWatcher, Cursor<Vec<u8>>>;
 
@@ -562,5 +597,19 @@ mod tests {
             .unwrap();
 
         assert_eq!(written_lines(&mut monitor), vec!["OK".to_owned()]);
+    }
+
+    #[test]
+    fn test_start_error_has_command_context() {
+        let mut monitor = Monitor::new(FailingWatchWatcher, Cursor::new(vec![]));
+
+        let error = monitor
+            .handle_event(MonitorEvent::Input("START 123 /tmp/sample\n".into()))
+            .unwrap_err();
+
+        let message = format!("{:#}", error);
+        assert!(message.contains("op=handle_input command=\"START 123 /tmp/sample\""));
+        assert!(message.contains("op=watch command=START replica_id=123"));
+        assert!(message.contains("No path was found."));
     }
 }

@@ -43,7 +43,10 @@ fn main() -> Result<()> {
         for result in fs_event_rx {
             match result {
                 Ok(event) => event_tx.send(MonitorEvent::FsEvent(event))?,
-                Err(error) => error!("File watcher error: {}", error),
+                Err(error) => error!(
+                    "component=file_watcher event=notify_error error={} error_debug={:?}",
+                    error, error
+                ),
             }
         }
 
@@ -51,8 +54,16 @@ fn main() -> Result<()> {
     });
 
     for event in event_rx {
+        let event_kind = match &event {
+            MonitorEvent::Input(_) => "input",
+            MonitorEvent::FsEvent(_) => "fs_event",
+        };
+        let event_description = format!("{:?}", event);
         if let Err(error) = monitor.handle_event(event) {
-            error!("Error handling event: {}", error);
+            error!(
+                "component=monitor event=handle_event_failure event_kind={} event_payload={:?} error={} error_chain={:#}",
+                event_kind, event_description, error, error
+            );
         }
     }
 
