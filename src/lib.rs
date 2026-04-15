@@ -1,4 +1,4 @@
 pub mod monitor;
 pub mod protocol;
 
-pub use monitor::{Monitor, MonitorEvent, Watch};
+pub use monitor::{FsEvent, Monitor, MonitorEvent, Watch};

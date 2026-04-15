@@ -1,19 +1,24 @@
 use crate::protocol::{encode, parse_input};
 use anyhow::{Context, Result, bail};
 use log::{debug, info};
-use notify::{Event as NotifyEvent, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
+use notify::{RecommendedWatcher, Watcher as NotifyWatcher};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FsEvent {
+    pub paths: Vec<PathBuf>,
+}
+
 #[derive(Debug)]
 pub enum MonitorEvent {
     Input(String),
-    FsEvent(NotifyEvent),
+    FsEvent(FsEvent),
 }
 
 pub trait Watch {
-    fn watch(&mut self, _path: &Path, _recursive_mode: RecursiveMode) -> Result<()> {
+    fn watch(&mut self, _path: &Path) -> Result<()> {
         Ok(())
     }
 
@@ -23,8 +28,12 @@ pub trait Watch {
 }
 
 impl Watch for RecommendedWatcher {
-    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> Result<()> {
-        Ok(NotifyWatcher::watch(self, path, recursive_mode)?)
+    fn watch(&mut self, path: &Path) -> Result<()> {
+        Ok(NotifyWatcher::watch(
+            self,
+            path,
+            notify::RecursiveMode::Recursive,
+        )?)
     }
 
     fn unwatch(&mut self, path: &Path) -> Result<()> {
@@ -118,7 +127,7 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         }
     }
 
-    fn handle_fs_event(&mut self, event: &NotifyEvent) -> Result<()> {
+    fn handle_fs_event(&mut self, event: &FsEvent) -> Result<()> {
         let mut matched_replica_ids = HashSet::new();
 
         for path in &event.paths {
@@ -179,14 +188,12 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
             .get(&replica_id)
             .is_none_or(|replica| !replica.is_watching(&current_path));
         if should_watch {
-            self.watcher
-                .watch(&current_path, RecursiveMode::Recursive)
-                .with_context(|| {
-                    format!(
-                        "op=watch command=START replica_id={} path={:?}",
-                        replica_id, current_path
-                    )
-                })?;
+            self.watcher.watch(&current_path).with_context(|| {
+                format!(
+                    "op=watch command=START replica_id={} path={:?}",
+                    replica_id, current_path
+                )
+            })?;
         }
 
         let replica = self
@@ -209,14 +216,12 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
             .canonicalize()
             .with_context(|| format!("op=canonicalize command=LINK path={:?}", path))?;
 
-        self.watcher
-            .watch(&realpath, RecursiveMode::Recursive)
-            .with_context(|| {
-                format!(
-                    "op=watch command=LINK path={:?} realpath={:?}",
-                    path, realpath
-                )
-            })?;
+        self.watcher.watch(&realpath).with_context(|| {
+            format!(
+                "op=watch command=LINK path={:?} realpath={:?}",
+                path, realpath
+            )
+        })?;
         self.link_map.entry(realpath).or_default().insert(path);
         debug!("link_map: {:?}", self.link_map);
         self.send_ack();
@@ -287,7 +292,7 @@ impl<WATCH: Watch, WRITE: Write> Monitor<WATCH, WRITE> {
         }
     }
 
-    fn linked_paths_for_event(&self, event: &NotifyEvent) -> Vec<PathBuf> {
+    fn linked_paths_for_event(&self, event: &FsEvent) -> Vec<PathBuf> {
         if self.link_map.is_empty() {
             return Vec::new();
         }
@@ -345,7 +350,7 @@ mod tests {
     use super::{Monitor, MonitorEvent, Watch};
     use anyhow::bail;
     use notify::{
-        Event as NotifyEvent, RecursiveMode,
+        Event as NotifyEvent,
         event::{CreateKind, EventKind},
     };
     use std::io::Cursor;
@@ -359,7 +364,7 @@ mod tests {
     struct FailingWatchWatcher;
 
     impl Watch for FailingWatchWatcher {
-        fn watch(&mut self, _path: &Path, _recursive_mode: RecursiveMode) -> anyhow::Result<()> {
+        fn watch(&mut self, _path: &Path) -> anyhow::Result<()> {
             bail!("No path was found.");
         }
     }
@@ -378,8 +383,9 @@ mod tests {
             .collect()
     }
 
-    fn create_event(path: PathBuf) -> NotifyEvent {
-        NotifyEvent::new(EventKind::Create(CreateKind::Any)).add_path(path)
+    fn create_event(path: PathBuf) -> super::FsEvent {
+        let event = NotifyEvent::new(EventKind::Create(CreateKind::Any)).add_path(path);
+        super::FsEvent { paths: event.paths }
     }
 
     #[test]

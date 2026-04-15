@@ -30,6 +30,8 @@ cargo install unison-fsmonitor
 
 Run `unison` with `-repeat watch`, or set `repeat = watch` in your config file.
 
+`unison-fsmonitor` uses Watchman automatically when a `watchman` binary is available on `PATH`. If Watchman is not installed, it falls back to the in-process `notify` backend.
+
 ## File Watch Limits
 
 If you hit the watch limit, increase the file watch limits on both hosts. See <https://facebook.github.io/watchman/docs/install#system-specific-preparation> for platform-specific guidance.
