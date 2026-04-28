@@ -3,6 +3,7 @@ use log::{debug, error, info};
 use notify::{Config, RecommendedWatcher, Watcher};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{BufRead, StdoutLock, stdin, stdout};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,8 +52,14 @@ fn watchman_is_available() -> bool {
 }
 
 enum WatchmanCommand {
-    Watch(PathBuf),
-    Unwatch(PathBuf),
+    Watch {
+        path: PathBuf,
+        response_tx: oneshot::Sender<Result<()>>,
+    },
+    Unwatch {
+        path: PathBuf,
+        response_tx: oneshot::Sender<Result<()>>,
+    },
 }
 
 struct WatchmanWatcher {
@@ -83,15 +90,33 @@ impl WatchmanWatcher {
 
 impl Watch for WatchmanWatcher {
     fn watch(&mut self, path: &Path) -> Result<()> {
+        let (response_tx, response_rx) = oneshot::channel();
         self.command_tx
-            .send(WatchmanCommand::Watch(path.to_path_buf()))
-            .with_context(|| format!("Failed sending watch command for {:?}", path))
+            .send(WatchmanCommand::Watch {
+                path: path.to_path_buf(),
+                response_tx,
+            })
+            .with_context(|| format!("Failed sending watch command for {:?}", path))?;
+
+        response_rx
+            .blocking_recv()
+            .context("Watchman backend exited before acknowledging watch")?
+            .with_context(|| format!("Failed establishing watch for {:?}", path))
     }
 
     fn unwatch(&mut self, path: &Path) -> Result<()> {
+        let (response_tx, response_rx) = oneshot::channel();
         self.command_tx
-            .send(WatchmanCommand::Unwatch(path.to_path_buf()))
-            .with_context(|| format!("Failed sending unwatch command for {:?}", path))
+            .send(WatchmanCommand::Unwatch {
+                path: path.to_path_buf(),
+                response_tx,
+            })
+            .with_context(|| format!("Failed sending unwatch command for {:?}", path))?;
+
+        response_rx
+            .blocking_recv()
+            .context("Watchman backend exited before acknowledging unwatch")?
+            .with_context(|| format!("Failed removing watch for {:?}", path))
     }
 }
 
@@ -122,14 +147,23 @@ impl WatchmanState {
 
     async fn handle_command(&mut self, command: WatchmanCommand) -> Result<()> {
         match command {
-            WatchmanCommand::Watch(path) => self.watch(path).await,
-            WatchmanCommand::Unwatch(path) => self.unwatch(path).await,
+            WatchmanCommand::Watch { path, response_tx } => {
+                let result = self.watch(path).await;
+                let _ = response_tx.send(result);
+                Ok(())
+            }
+            WatchmanCommand::Unwatch { path, response_tx } => {
+                let result = self.unwatch(path).await;
+                let _ = response_tx.send(result);
+                Ok(())
+            }
         }
     }
 
     async fn watch(&mut self, path: PathBuf) -> Result<()> {
-        let canonical = CanonicalPath::canonicalize(&path)
-            .with_context(|| format!("Failed canonicalizing watch path {:?}", path))?;
+        let watch_path = watchman_watch_path(&path)?;
+        let canonical = CanonicalPath::canonicalize(&watch_path)
+            .with_context(|| format!("Failed canonicalizing watch path {:?}", watch_path))?;
         let canonical_path = canonical.clone().into_path_buf();
 
         if self.subscriptions.contains_key(&canonical_path) {
@@ -140,12 +174,12 @@ impl WatchmanState {
             .client
             .resolve_root(canonical)
             .await
-            .with_context(|| format!("Failed resolving Watchman root for {:?}", path))?;
+            .with_context(|| format!("Failed resolving Watchman root for {:?}", watch_path))?;
         let clock = self
             .client
             .clock(&resolved, SyncTimeout::Default)
             .await
-            .with_context(|| format!("Failed reading Watchman clock for {:?}", path))?;
+            .with_context(|| format!("Failed reading Watchman clock for {:?}", watch_path))?;
 
         let request = SubscribeRequest {
             since: Some(Clock::Spec(clock)),
@@ -267,6 +301,19 @@ fn watchman_event(watched_path: &Path, result: QueryResult<ChangedFile>) -> Opti
     }
 
     Some(FsEvent { paths })
+}
+
+fn watchman_watch_path(path: &Path) -> Result<PathBuf> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("Failed reading file type for watch path {:?}", path))?;
+
+    if metadata.is_dir() {
+        return Ok(path.to_path_buf());
+    }
+
+    path.parent()
+        .map(Path::to_path_buf)
+        .context("Cannot watch a file path without a parent directory")
 }
 
 fn run_watchman_backend(
@@ -395,7 +442,8 @@ fn new_notify_watcher(fs_event_tx: Sender<Result<FsEvent>>) -> Result<Recommende
 
 #[cfg(test)]
 mod tests {
-    use super::{Backend, ChangedFile, watchman_event};
+    use super::{Backend, ChangedFile, watchman_event, watchman_watch_path};
+    use std::fs;
     use std::path::{Path, PathBuf};
     use unison_fsmonitor::FsEvent;
     use watchman_client::fields::{ExistsField, NameField};
@@ -455,6 +503,33 @@ mod tests {
                 paths: vec![PathBuf::from("/tmp/project")],
             })
         );
+    }
+
+    #[test]
+    fn watchman_watch_path_keeps_directories() {
+        let path = Path::new("/tmp");
+        assert_eq!(watchman_watch_path(path).unwrap(), path);
+    }
+
+    #[test]
+    fn watchman_watch_path_uses_parent_for_files() {
+        let unique = format!(
+            "unison-fsmonitor-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let tempdir = std::env::temp_dir().join(unique);
+        fs::create_dir(&tempdir).unwrap();
+        let file_path = tempdir.join("file.txt");
+        fs::write(&file_path, "hello").unwrap();
+
+        assert_eq!(watchman_watch_path(&file_path).unwrap(), tempdir);
+
+        fs::remove_file(file_path).unwrap();
+        fs::remove_dir(tempdir).unwrap();
     }
 
     fn query_result(files: Vec<PathBuf>) -> QueryResult<ChangedFile> {
