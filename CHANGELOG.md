@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.1.0](https://github.com/aaronflorey/unison-fsmonitor/compare/v2.0.2...v2.1.0) (2026-04-28)
+
+
+### Features
+
+* **watcher:** Add automatic Watchman backend ([197a767](https://github.com/aaronflorey/unison-fsmonitor/commit/197a767bd15f7ebc96c760f3b6592540948162f7))
+
+
+### Bug Fixes
+
+* **watchman:** handle file watch subscriptions ([3c8d244](https://github.com/aaronflorey/unison-fsmonitor/commit/3c8d244de12249a4845f0ab6f71b3aa3ca7acaaf))
+
+
+### Performance Improvements
+
+* **monitor:** Reduce event-path and error-format overhead ([a2ada92](https://github.com/aaronflorey/unison-fsmonitor/commit/a2ada92940e7b665d55b49c6dfcf2cf62b675962))
+
 ## [2.0.2](https://github.com/aaronflorey/unison-fsmonitor/compare/v2.0.1...v2.0.2) (2026-04-14)
 
 
